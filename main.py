@@ -17,7 +17,7 @@ rt = np.array([3,5,1])  #m
 to = 0                  #sec
 tf = 30                 #sec
 h = 0.1                 #pas d'intégration
-t = np.linspace(to, tf, int(((tf-to)/h)+1))
+t_span = np.linspace(to, tf, int(((tf-to)/h)+1))
 
 F0 = (m*g)/4            #N
 F1 = []
@@ -25,28 +25,28 @@ F2 = []
 F3 = []
 F4 = []
 
-for n in t:
-  if (n<5):         #Décollage
+for n in t_span:
+  if (0<=n<5):         #Décollage
     F1.append(F0+1E-3)
     F2.append(F0+1E-3)
     F3.append(F0+1E-3)
     F4.append(F0+1E-3)
-  elif (5<n<7.5):   #Roll + Pitch  
+  elif (5<=n<7.5):   #Roll + Pitch  
     F1.append(F0-1E-6)
     F2.append(F0-1E-6)
     F3.append(F0+1E-6)
     F4.append(F0+1E-6)
-  elif (7.5<n<10):  #Roll + Pitch
+  elif (7.5<=n<10):  #Roll + Pitch
     F1.append(F0+1E-6)
     F2.append(F0+1E-6)
     F3.append(F0-1E-6)
     F4.append(F0-1E-6)
-  elif (10<n<15):   #Ligne Droite
+  elif (10<=n<15):   #Ligne Droite
     F1.append(F0)
     F2.append(F0)
     F3.append(F0)
     F4.append(F0)
-  elif (15<n<30):   #Freinage
+  elif (15<=n<=30):   #Freinage
     F1.append(F0-1E-3)
     F2.append(F0-1E-3)
     F3.append(F0-1E-3)
@@ -79,24 +79,50 @@ def drone_IED(t, var_etats):
   q = var_etats[10]
   r = var_etats[11]
 
+  F1_t = np.interp(t, t_span, F1)
+  F2_t = np.interp(t, t_span, F2)
+  F3_t = np.interp(t, t_span, F3)
+  F4_t = np.interp(t, t_span, F4)
+
   dxdt = x_dot
   dydt = y_dot
   dzdt = z_dot
 
-  dvxdt = (alpha * V**2 + (np.sin(phi) * np.sin(psi) * (F1+F2+F3+F4) + np.sin(theta) * np.cos(phi) * np.cos(psi) * (F1+F2+F3+F4))) / m
-  dvydt = (-np.sin(phi) * np.cos(psi) * (F1+F2+F3+F4) + np.sin(theta) * np.cos(phi) * np.sin(psi) * (F1+F2+F3+F4))/m
-  dvzdt = (m * g + (np.cos(theta) * np.cos(phi) * (F1+F2+F3+F4)))/m
+  dvxdt = (alpha * V**2 + (np.sin(phi) * np.sin(psi) * (F1_t+F2_t+F3_t+F4_t) + np.sin(theta) * np.cos(phi) * np.cos(psi) * (F1_t+F2_t+F3_t+F4_t))) / m
+  dvydt = (-np.sin(phi) * np.cos(psi) * (F1_t+F2_t+F3_t+F4_t) + np.sin(theta) * np.cos(phi) * np.sin(psi) * (F1_t+F2_t+F3_t+F4_t)) / m
+  dvzdt = (m * -g + (np.cos(theta) * np.cos(phi) * (F1_t+F2_t+F3_t+F4_t))) / m
 
-  dtheta_dt = p
-  dphi_dt = q
-  dpsi_dt = r
+  dtheta_dt = q * np.cos(phi) - r * np.sin(phi)
+  dphi_dt = p + (q * np.sin(phi) + r * np.cos(phi)) * np.sin(theta) / np.cos(theta)
+  dpsi_dt = (q * np.sin(phi) + r * np.cos(phi)) / np.cos(theta)
 
-  p_dot = (q * r * (Iyy - Izz) + L * (F2 - F4)) / Ixx
-  q_dot = (p * r * (Izz - Ixx) + L * (F3 - F1)) / Iyy
-  r_dot = (p * q * (Ixx - Iyy) + L * (-F1 + F2 - F3 + F4)) / Izz
-  
+  p_dot = (q * r * (Iyy - Izz) + L * (F2_t - F4_t)) / Ixx
+  q_dot = (p * r * (Izz - Ixx) + L * (F3_t - F1_t)) / Iyy
+  r_dot = (p * q * (Ixx - Iyy) + L * (-F1_t + F2_t - F3_t + F4_t)) / Izz
+
   return [dxdt,dydt,dzdt,dvxdt,dvydt,dvzdt,dtheta_dt,dphi_dt,dpsi_dt,p_dot,q_dot,r_dot]
 
-sol = solve_ivp(drone_IED,[to,tf], y0=np.zeros(12), method='RK45',t_eval=t)
+sol = solve_ivp(drone_IED,t_span=[to,tf], y0=np.zeros(12), method='RK45',t_eval=t_span)
 
-print(sol.y[0], sol.y[1], sol.y[2])
+#print(sol.y[0], sol.y[1], sol.y[2])
+
+#Graphique 3d de l'évolution du marqueur
+fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
+ax.plot(sol.y[0], sol.y[1], sol.y[2], label='Trajectoire')
+theta1 = np.linspace(0, 2*np.pi, 200)
+r = 1
+x1 = r * np.cos(theta1)
+y1 = r * np.sin(theta1)
+z1 = np.zeros_like(theta1)
+ax.plot(x1+3, y1+5, z1+1, color='blue')
+
+ax.set(xticklabels=[],
+       yticklabels=[],
+       zticklabels=[])
+ax.scatter([3],[5],[1], color='r', label="Cible")
+ax.set_xlabel("x (m)")
+ax.set_ylabel("y (m)")
+ax.set_zlabel("z (m)")
+ax.set_title("Trajectoire 3D du drone")
+ax.legend()
+plt.show()
