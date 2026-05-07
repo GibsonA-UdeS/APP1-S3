@@ -1,6 +1,5 @@
-from scipy.integrate import solve_ivp, simpson
+from scipy.integrate import solve_ivp
 from scipy.interpolate import interp1d
-from scipy.differentiate import derivative
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
@@ -12,7 +11,7 @@ Ixx = 0.6E-3            #kg * m²
 Iyy = 1.1E-3            #kg * m²
 Izz = 1.5E-3            #kg * m²
 L = 0.1                 #m
-V = 2                   #m/s
+V = 1                   #m/s
 alpha = 1E-4            #Ns²/m²
 rt = np.array([3,5,1])  #m
 
@@ -64,7 +63,7 @@ dr0 = 0
 d2r0 = 0
 
 var_etats = np.empty(12)
-def drone_IED(t, var_etats):
+def drone_EDO(t, var_etats):
   x = var_etats[0]
   y = var_etats[1]
   z = var_etats[2]
@@ -112,7 +111,7 @@ def atterissage(t, y):
 atterissage.terminal = True
 atterissage.direction = 0
 
-sol = solve_ivp(drone_IED,t_span=[to,tf], y0=np.zeros(12), method='RK45',t_eval=t_span,events=atterissage)
+sol = solve_ivp(drone_EDO,t_span=[to,tf], y0=np.zeros(12), method='RK45',t_eval=t_span,events=atterissage)
 
 if sol.status == 1:
   print("Temps de trajet :", sol.t_events[0],"s")
@@ -121,14 +120,23 @@ else:
   print("Atterissage manqué")
   print("Position finale :", sol.y[0][-1], sol.y[1][-1], sol.y[2][-1], "m")
 
+def derivative(y, t):
+    df_fwd_bwd = (y[1:] - y[:-1]) / h         # Pour la dérivée avant et arrière
+    df_ctd = (y[2:] - y[:-2]) / (2 * h)     # Pour la dérivée centrée
+    df_app = []
+    df_app.append(df_fwd_bwd[0])
+    df_app.extend(df_ctd)
+    df_app.append(df_fwd_bwd[-1])
+    return np.array(df_app)
+
+def simpson(y,t):
+  return ((h/3) * (y[0] + np.sum(4*y[1:-1:2]) + np.sum(2*y[2:-1:2]) + y[-1]))
+
 longueur_traj = ((simpson(sol.y[3],sol.t))**2 + (simpson(sol.y[4],sol.t))**2 + (simpson(sol.y[5],sol.t))**2)**0.5
 print("Longueur de la trajectoire :", longueur_traj, "m")
 
-fx = interp1d(sol.t,sol.y[0],'cubic', fill_value="extrapolate")
-fy = interp1d(sol.t,sol.y[1],'cubic', fill_value="extrapolate")
-fz = interp1d(sol.t,sol.y[2],'cubic', fill_value="extrapolate")
-
-vit_instant = ((derivative(fx,sol.t).df)**2 + (derivative(fy,sol.t).df)**2 + (derivative(fz,sol.t).df)**2)**0.5
+vit_instant = ((derivative(sol.y[0],sol.t))**2 + (derivative(sol.y[1],sol.t))**2 + (derivative(sol.y[2],sol.t))**2)**0.5
+plt.title('Dérivation numérique de la position')
 plt.plot(sol.t, vit_instant, label='Vitesse instantanée')
 plt.xlabel('t (s)')
 plt.ylabel('v (m/s)')
